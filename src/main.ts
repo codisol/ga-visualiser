@@ -1,7 +1,6 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { Multivector } from './ga'
-import './ga.test'
 
 const canvas = document.getElementById("main")!
 
@@ -112,22 +111,158 @@ function render() {
 
 renderer.setAnimationLoop(render)
 
-let offset = new THREE.Vector3(0, 0, 0)
+const raycaster = new THREE.Raycaster()
+const dragPlane = new THREE.Plane()
+const planeIntersect = new THREE.Vector3()
+const dragOffset = new THREE.Vector3()
+let isDragging = false
+let draggedObject: THREE.Mesh | null = null
 
-window.addEventListener('click', (event) => {
+const selectionHelper = new THREE.BoxHelper(cube, 0xffff00)
+selectionHelper.visible = false
+scene.add(selectionHelper)
+let selectedRow: HTMLElement | null = null
+
+window.addEventListener('pointerdown', (event) => {
     setPickPosition(event)
-    offset.set(pickPosition.x, pickPosition.y, 0)
-})
+    raycaster.setFromCamera(pickPosition, camera)
+    const intersects = raycaster.intersectObjects(scene.children)
+    const found = intersects.find(i => i.object instanceof THREE.Mesh)
 
-window.addEventListener('mousedown', (event) => {
-    if (pickHelper.pickedObject) {
-        pickHelper.pickedObject.position.x += offset.x
-        event
+    if (found) {
+        isDragging = true
+        draggedObject = found.object as THREE.Mesh
+        controls.enabled = false
+
+        const normal = new THREE.Vector3()
+        camera.getWorldDirection(normal)
+        dragPlane.setFromNormalAndCoplanarPoint(normal, found.point)
+        raycaster.ray.intersectPlane(dragPlane, planeIntersect)
+        dragOffset.subVectors(draggedObject.position, planeIntersect)
     }
 })
 
-// window.addEventListener('pointerover', setPickPosition)
-// window.addEventListener('mouseover', setPickPosition)
-// window.addEventListener('mousemove', setPickPosition)
-// window.addEventListener('mouseleave', clearPickPosition)
-// window.addEventListener('mouseout', clearPickPosition)
+window.addEventListener('pointermove', (event) => {
+    setPickPosition(event)
+
+    if (isDragging && draggedObject) {
+        raycaster.setFromCamera(pickPosition, camera)
+        if (raycaster.ray.intersectPlane(dragPlane, planeIntersect)) {
+            const target = new THREE.Vector3().addVectors(planeIntersect, dragOffset)
+
+            // Use GA to calculate the new position via translation
+            const currentPoint = Multivector.point(draggedObject.position.x, draggedObject.position.y, draggedObject.position.z)
+            
+            const dx = target.x - draggedObject.position.x
+            const dy = target.y - draggedObject.position.y
+            const dz = target.z - draggedObject.position.z
+            const translator = Multivector.translator(dx, dy, dz)
+
+            const newPoint = currentPoint.applyMotor(translator)
+
+            draggedObject.position.set(newPoint.components[12], newPoint.components[13], newPoint.components[11])
+
+            if (draggedObject.userData.uiInput) {
+                const { x, y, z } = draggedObject.position
+                draggedObject.userData.uiInput.value = `${draggedObject.userData.type} ${x.toFixed(2)} ${y.toFixed(2)} ${z.toFixed(2)}`
+            }
+            if (selectionHelper.visible) selectionHelper.update()
+        }
+    }
+})
+
+window.addEventListener('pointerup', () => {
+    isDragging = false
+    draggedObject = null
+    controls.enabled = true
+})
+
+window.addEventListener('pointerleave', clearPickPosition)
+
+const inputField = document.querySelector('.math-input') as HTMLInputElement
+
+if (inputField) {
+    inputField.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            const text = inputField.value.trim()
+            const parts = text.split(/\s+/)
+            const type = parts[0].toLowerCase()
+
+            let geometry
+            if (type === 'cube') geometry = new THREE.BoxGeometry(2, 2, 2)
+            else if (type === 'sphere') geometry = new THREE.SphereGeometry(1.5, 32, 16)
+
+            if (geometry) {
+                const material = new THREE.MeshBasicMaterial({
+                    color: Math.random() * 0xffffff,
+                    transparent: true,
+                    opacity: 0.8
+                })
+                const mesh = new THREE.Mesh(geometry, material)
+                mesh.position.set(parseFloat(parts[1]) || 0, parseFloat(parts[2]) || 0, parseFloat(parts[3]) || 0)
+                scene.add(mesh)
+
+                createObjectUI(type, text, mesh)
+                inputField.value = ''
+            }
+        }
+    })
+}
+
+function createObjectUI(label: string, command: string, mesh: THREE.Mesh) {
+    const row = document.createElement('div')
+    row.className = 'input-row'
+
+    const labelDiv = document.createElement('div')
+    labelDiv.className = 'input-label'
+    labelDiv.textContent = label
+
+    const inputDisplay = document.createElement('input')
+    inputDisplay.type = 'text'
+    inputDisplay.className = 'math-input'
+    inputDisplay.value = command
+
+    inputDisplay.addEventListener('change', () => {
+        const parts = inputDisplay.value.trim().split(/\s+/)
+        const x = parseFloat(parts[1])
+        const y = parseFloat(parts[2])
+        const z = parseFloat(parts[3])
+        if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
+            const p = Multivector.point(x, y, z)
+            mesh.position.set(p.components[12], p.components[13], p.components[11])
+            if (selectionHelper.visible) selectionHelper.update()
+        }
+    })
+
+    mesh.userData = { uiInput: inputDisplay, type: label }
+
+    const deleteBtn = document.createElement('button')
+    deleteBtn.className = 'delete-btn'
+    deleteBtn.innerHTML = '&times;'
+    deleteBtn.onclick = (e) => {
+        e.stopPropagation()
+        scene.remove(mesh)
+        row.remove()
+        if (selectedRow === row) {
+            selectionHelper.visible = false
+            selectedRow = null
+        }
+    }
+
+    row.addEventListener('click', () => {
+        if (selectedRow) selectedRow.classList.remove('selected')
+        row.classList.add('selected')
+        selectedRow = row
+        selectionHelper.setFromObject(mesh)
+        selectionHelper.visible = true
+    })
+
+    row.appendChild(labelDiv)
+    row.appendChild(inputDisplay)
+    row.appendChild(deleteBtn)
+
+    const mainInputRow = inputField.closest('.input-row')
+    if (mainInputRow && mainInputRow.parentNode) {
+        mainInputRow.parentNode.insertBefore(row, mainInputRow)
+    }
+}

@@ -9,11 +9,13 @@ export class Multivector {
     private static readonly BITMASK_TO_INDEX: Map<number, number> = new Map()
     private static readonly SIGNATURE = [0, 1, 1, 1]
 
+    private static readonly FLIPPED_MASKS = new Set([10, 11]);
+
     private static readonly MUL_INDEX_TABLE: Uint8Array = new Uint8Array(16 * 16)
-    private static readonly MUL_SIGN_TABLE: Uint8Array = new Uint8Array(16 * 16)
+    private static readonly MUL_SIGN_TABLE: Int8Array = new Int8Array(16 * 16)
 
     private static readonly WEDGE_INDEX_TABLE: Uint8Array = new Uint8Array(16 * 16)
-    private static readonly WEDGE_SIGN_TABLE: Uint8Array = new Uint8Array(16 * 16)
+    private static readonly WEDGE_SIGN_TABLE: Int8Array = new Int8Array(16 * 16)
 
     private static readonly GRADE_TABLE: Uint8Array = new Uint8Array(16)
 
@@ -41,70 +43,90 @@ export class Multivector {
                 const bitmaskA = this.BASIS_BITMASKS[i]
                 const bitmaskB = this.BASIS_BITMASKS[j]
 
-                const { bitmask: mulBitmask, sign: mulSign } = this.geometricProduct(bitmaskA, bitmaskB)
-                const mulIndex = this.BITMASK_TO_INDEX.get(mulBitmask)!
-                this.MUL_INDEX_TABLE[i * 16 + j] = mulIndex
-                this.MUL_SIGN_TABLE[i * 16 + j] = mulSign
+                const signA = this.FLIPPED_MASKS.has(bitmaskA) ? -1 : 1;
+                const signB = this.FLIPPED_MASKS.has(bitmaskB) ? -1 : 1;
+                const inputSign = signA * signB;
 
-                const { bitmask: wedgeBitmask, sign: wedgeSign } = this.outerProduct(bitmaskA, bitmaskB)
+                const { bitmask: mulBitmask, sign: mulSignRaw } = this.geometricProduct(bitmaskA, bitmaskB)
+                const mulIndex = this.BITMASK_TO_INDEX.get(mulBitmask)!
+                const mulResSign = this.FLIPPED_MASKS.has(mulBitmask) ? -1 : 1;
+                this.MUL_INDEX_TABLE[i * 16 + j] = mulIndex
+                this.MUL_SIGN_TABLE[i * 16 + j] = mulSignRaw * inputSign * mulResSign
+
+                const { bitmask: wedgeBitmask, sign: wedgeSignRaw } = this.outerProduct(bitmaskA, bitmaskB)
                 const wedgeIndex = this.BITMASK_TO_INDEX.get(wedgeBitmask)!
+                const wedgeResSign = this.FLIPPED_MASKS.has(wedgeBitmask) ? -1 : 1;
                 this.WEDGE_INDEX_TABLE[i * 16 + j] = wedgeIndex
-                this.WEDGE_SIGN_TABLE[i * 16 + j] = wedgeSign
+                this.WEDGE_SIGN_TABLE[i * 16 + j] = wedgeSignRaw * inputSign * wedgeResSign;
             }
         }
 
-        console.log(this.GRADE_TABLE)
-        console.log(this.BASIS_LABELS)
+        /*
+        for (let i = 0; i < 16; i++) {
+            const base = Multivector.BASIS_LABELS
+            let indices = Multivector.WEDGE_INDEX_TABLE.slice(i * 16, i * 16 + 16)
+            let labels = Array.from(indices, (index) => { return Multivector.BASIS_LABELS[index] })
+            let signs = Multivector.WEDGE_SIGN_TABLE.slice(i * 16, i * 16 + 16)
+            console.log(labels.map((value, index)=>{return `${base[i]}^${base[index]}=${[value, signs[index]]}`}))
+            }
+            */
+        // for (let i = 0; i < 16; i++) {
+        //     const base = Multivector.BASIS_LABELS
+        //     let indices = Multivector.MUL_INDEX_TABLE.slice(i * 16, i * 16 + 16)
+        //     let labels = Array.from(indices, (index) => { return Multivector.BASIS_LABELS[index] })
+        //     let signs = Multivector.MUL_SIGN_TABLE.slice(i * 16, i * 16 + 16)
+        //     console.log(labels.map((value, index)=>{return `${base[i]}*${base[index]}=${[value, signs[index]]}`}))
+        // }
     }
 
     private static geometricProduct(bitmaskA: number, bitmaskB: number): { bitmask: number; sign: number } {
+        const listA: number[] = []
+        const listB: number[] = []
+        for (let k = 0; k < 4; k++) {
+            if ((bitmaskA & (1 << k)) !== 0) listA.push(k)
+            if ((bitmaskB & (1 << k)) !== 0) listB.push(k)
+        }
+
+        const list = listA.concat(listB)
         let sign = 1
-        let resultBitmask = bitmaskB
 
-        for (let i = 0; i < 4; i++) {
-            const mask_i = 1 << i
-            if ((bitmaskA & mask_i) === 0) continue
-
-            for (let j = 0; j < i; j++) {
-                const mask_j = 1 << j
-                if ((resultBitmask & mask_j) !== 0) {
+        for (let i = 0; i < list.length; i++) {
+            for (let j = 0; j < list.length - 1 - i; j++) {
+                if (list[j] > list[j + 1]) {
+                    const temp = list[j]
+                    list[j] = list[j + 1]
+                    list[j + 1] = temp
                     sign *= -1
                 }
             }
+        }
 
-            if ((resultBitmask & mask_i) !== 0) {
-                resultBitmask = resultBitmask ^ mask_i
-                sign *= this.SIGNATURE[i]
+        const finalList: number[] = []
+        let i = 0
+        while (i < list.length) {
+            if (i < list.length - 1 && list[i] === list[i + 1]) {
+                const k = list[i]
+                const metric = this.SIGNATURE[k]
+                if (metric === 0) return { bitmask: 0, sign: 0 }
+                sign *= metric
+                i += 2
             } else {
-                resultBitmask = resultBitmask | mask_i
+                finalList.push(list[i])
+                i++
             }
         }
 
-        return { bitmask: resultBitmask, sign: sign }
+        let resultBitmask = 0
+        for (const k of finalList) {
+            resultBitmask |= (1 << k)
+        }
+
+        return { bitmask: resultBitmask, sign }
     }
 
     private static outerProduct(bitmaskA: number, bitmaskB: number): { bitmask: number, sign: number } {
-        if ((bitmaskA & bitmaskB) !== 0) {
-            return { bitmask: 0, sign: 0 }
-        }
-
-        let sign = 1
-        const resultBitmask = bitmaskA | bitmaskB
-
-        let [a, b] = [bitmaskA, bitmaskB]
-        for (let i = 3; i >= 0; i--) {
-            const mask_i = 1 << i
-            if ((a & mask_i) === 0) continue
-
-            for (let j = i - 1; j >= 0; j--) {
-                const mask_j = 1 << j
-                if ((b & mask_j) !== 0) {
-                    sign *= -1
-                }
-            }
-        }
-
-        return { bitmask: resultBitmask, sign: sign }
+        if ((bitmaskA & bitmaskB) !== 0) return { bitmask: 0, sign: 0 };
+        return this.geometricProduct(bitmaskA, bitmaskB);
     }
 
     /**
@@ -142,9 +164,9 @@ export class Multivector {
     static point(x: number, y: number, z: number): Multivector {
         const multivector = new Multivector()
         multivector.components[14] = 1
-        multivector.components[12] = -x
+        multivector.components[12] = x
         multivector.components[13] = y
-        multivector.components[11] = -z
+        multivector.components[11] = z
         return multivector
     }
 
@@ -169,10 +191,21 @@ export class Multivector {
                 const table_index = i * 16 + j
                 const resultIndex = Multivector.MUL_INDEX_TABLE[table_index]
                 const sign = Multivector.MUL_SIGN_TABLE[table_index]
+                // if (table_index == 34) {
+                //     for (let i = 0; i < 16; i++) {
+                //         const base = Multivector.BASIS_LABELS
+                //         let indices = Multivector.MUL_INDEX_TABLE.slice(i * 16, i * 16 + 16)
+                //         let labels = Array.from(indices, (index) => { return Multivector.BASIS_LABELS[index] })
+                //         let signs = Multivector.MUL_SIGN_TABLE.slice(i * 16, i * 16 + 16)
+                //         console.log(labels.map((value, index) => { return `${base[i]}*${base[index]}=${[value, signs[index]]}` }))
+                //     }
+                // }
+                // console.log(`${table_index}, ${resultIndex}, ${sign}`)
 
                 c[resultIndex] += sign * a[i] * b[j]
             }
         }
+        // console.log(c.toString())
         return new Multivector(c)
     }
 
@@ -234,6 +267,18 @@ export class Multivector {
         return new Multivector(c)
     }
 
+    dual(): Multivector {
+        return this.mul(Multivector.I)
+    }
+
+    grade(grade: number): Multivector {
+        const multivector = new Multivector()
+        for (let i = 0; i < 16; i++) {
+            if (Multivector.GRADE_TABLE[i] === grade) multivector.components[i] = this.components[i]
+        }
+        return multivector
+    }
+
     // --- Transformations ---
 
     /**
@@ -246,7 +291,7 @@ export class Multivector {
         const scalarPart = Multivector.scalar(Math.cos(halfAngle))
         const bivectorPart = line.scale(Math.sin(halfAngle))
 
-        return scalarPart.add(bivectorPart)
+        return scalarPart.sub(bivectorPart)
     }
 
     /**
