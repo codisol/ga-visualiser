@@ -3,13 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Geometric Algebra</title>
+    <title>Geometric Algebra Visualised</title>
 </head>
 <body>
     <link rel="stylesheet" href="/src/style.css">
+    <link rel="stylesheet" href="/src/about.css">
     <div id="sidebar">
         <div class="sidebar-header">
-            <h3>Geometric Algebra</h3>
+            <h3>Geometric Algebra Visualised</h3>
+            <button id="about-btn">About</button>
         </div>
         <div class="input-list">
             <div class="input-row">
@@ -19,6 +21,20 @@
         </div>
     </div>
     <canvas id="main"></canvas>
+
+    <div id="about-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <h2>About This Project</h2>
+            <p>This application visualizes 3D Projective Geometric Algebra (PGA). You can create points, lines, and planes, and perform geometric operations like joins and meets.</p>
+            <h3>How to Use</h3>
+            <div class="video-container">
+                <!-- Replace the src below with your actual video URL -->
+                <iframe width="560" height="315" src="https://www.youtube.com/embed/BzyapXyQIvY" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
