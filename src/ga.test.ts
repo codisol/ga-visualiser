@@ -87,4 +87,38 @@ describe("GA Test", () => {
         expect(new_point.components[12]).toBeCloseTo(0)
         expect(new_point.components[13]).toBeCloseTo(-2) // y=2 -> -2
     })
+
+    test("Combinatorial Dual", () => {
+        // Point (1, 2, 3) -> 1*e123 - 1*e023 - 2*e031 - 3*e012
+        const point = Multivector.point(1, 2, 3)
+        const dual = point.dual()
+
+        // Duals: e123->e0, e023->e1, e031->e2, e012->e3
+        // Signs might flip depending on the table, but coefficients should be preserved in magnitude
+        expect(Math.abs(dual.components[1])).toBeCloseTo(1) // e0
+        expect(Math.abs(dual.components[2])).toBeCloseTo(1) // e1 (x)
+        expect(Math.abs(dual.components[3])).toBeCloseTo(2) // e2 (y)
+        expect(Math.abs(dual.components[4])).toBeCloseTo(3) // e3 (z)
+    })
+
+    test("Line Creation (Join of two points)", () => {
+        const p1 = Multivector.point(0, 0, 0)
+        const p2 = Multivector.point(0, 5, 0)
+        
+        // Line connecting (0,0,0) and (0,5,0) is the Y-axis.
+        const line = Multivector.line(p1, p2)
+
+        // Direction should be along Y (e31 or index 10)
+        // Moment should be 0 (passes through origin)
+        
+        // Check Direction (indices 9, 10, 8 for x, y, z)
+        expect(line.components[9]).toBeCloseTo(0)
+        expect(Math.abs(line.components[10])).toBeGreaterThan(0) 
+        expect(line.components[8]).toBeCloseTo(0)
+
+        // Check Moment (indices 5, 6, 7)
+        expect(line.components[5]).toBeCloseTo(0)
+        expect(line.components[6]).toBeCloseTo(0)
+        expect(line.components[7]).toBeCloseTo(0)
+    })
 })

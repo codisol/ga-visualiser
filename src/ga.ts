@@ -17,6 +17,9 @@ export class Multivector {
     private static readonly WEDGE_INDEX_TABLE: Uint8Array = new Uint8Array(16 * 16)
     private static readonly WEDGE_SIGN_TABLE: Int8Array = new Int8Array(16 * 16)
 
+    private static readonly DUAL_INDEX_TABLE: Uint8Array = new Uint8Array(16)
+    private static readonly DUAL_SIGN_TABLE: Int8Array = new Int8Array(16)
+
     private static readonly GRADE_TABLE: Uint8Array = new Uint8Array(16)
 
     /**
@@ -61,22 +64,17 @@ export class Multivector {
             }
         }
 
-        /*
         for (let i = 0; i < 16; i++) {
-            const base = Multivector.BASIS_LABELS
-            let indices = Multivector.WEDGE_INDEX_TABLE.slice(i * 16, i * 16 + 16)
-            let labels = Array.from(indices, (index) => { return Multivector.BASIS_LABELS[index] })
-            let signs = Multivector.WEDGE_SIGN_TABLE.slice(i * 16, i * 16 + 16)
-            console.log(labels.map((value, index)=>{return `${base[i]}^${base[index]}=${[value, signs[index]]}`}))
-            }
-            */
-        // for (let i = 0; i < 16; i++) {
-        //     const base = Multivector.BASIS_LABELS
-        //     let indices = Multivector.MUL_INDEX_TABLE.slice(i * 16, i * 16 + 16)
-        //     let labels = Array.from(indices, (index) => { return Multivector.BASIS_LABELS[index] })
-        //     let signs = Multivector.MUL_SIGN_TABLE.slice(i * 16, i * 16 + 16)
-        //     console.log(labels.map((value, index)=>{return `${base[i]}*${base[index]}=${[value, signs[index]]}`}))
-        // }
+            const bitmask = this.BASIS_BITMASKS[i]
+            const dualBitmask = 0b1111 ^ bitmask
+            const dualIndex = this.BITMASK_TO_INDEX.get(dualBitmask)!
+            this.DUAL_INDEX_TABLE[i] = dualIndex
+
+            let { sign } = this.outerProduct(bitmask, dualBitmask)
+            if (this.FLIPPED_MASKS.has(bitmask)) sign *= -1
+            if (this.FLIPPED_MASKS.has(dualBitmask)) sign *= -1
+            this.DUAL_SIGN_TABLE[i] = sign
+        }
     }
 
     private static geometricProduct(bitmaskA: number, bitmaskB: number): { bitmask: number; sign: number } {
@@ -164,10 +162,19 @@ export class Multivector {
     static point(x: number, y: number, z: number): Multivector {
         const multivector = new Multivector()
         multivector.components[14] = 1
-        multivector.components[12] = x
-        multivector.components[13] = y
-        multivector.components[11] = z
+        multivector.components[12] = -x
+        multivector.components[13] = -y
+        multivector.components[11] = -z
         return multivector
+    }
+
+    /**
+     * Creates a line from two points (regressive product).
+     * @param p1 First point
+     * @param p2 Second point
+     */
+    static line(p1: Multivector, p2: Multivector): Multivector {
+        return p1.dual().wedge(p2.dual()).dual()
     }
 
     /** The Pseudoscalar constant (e0123) */
@@ -191,21 +198,10 @@ export class Multivector {
                 const table_index = i * 16 + j
                 const resultIndex = Multivector.MUL_INDEX_TABLE[table_index]
                 const sign = Multivector.MUL_SIGN_TABLE[table_index]
-                // if (table_index == 34) {
-                //     for (let i = 0; i < 16; i++) {
-                //         const base = Multivector.BASIS_LABELS
-                //         let indices = Multivector.MUL_INDEX_TABLE.slice(i * 16, i * 16 + 16)
-                //         let labels = Array.from(indices, (index) => { return Multivector.BASIS_LABELS[index] })
-                //         let signs = Multivector.MUL_SIGN_TABLE.slice(i * 16, i * 16 + 16)
-                //         console.log(labels.map((value, index) => { return `${base[i]}*${base[index]}=${[value, signs[index]]}` }))
-                //     }
-                // }
-                // console.log(`${table_index}, ${resultIndex}, ${sign}`)
 
                 c[resultIndex] += sign * a[i] * b[j]
             }
         }
-        // console.log(c.toString())
         return new Multivector(c)
     }
 
@@ -268,7 +264,14 @@ export class Multivector {
     }
 
     dual(): Multivector {
-        return this.mul(Multivector.I)
+        const c = new Float64Array(16)
+        for (let i = 0; i < 16; i++) {
+            if (this.components[i] === 0) continue
+            const resultIndex = Multivector.DUAL_INDEX_TABLE[i]
+            const sign = Multivector.DUAL_SIGN_TABLE[i]
+            c[resultIndex] = sign * this.components[i]
+        }
+        return new Multivector(c)
     }
 
     grade(grade: number): Multivector {
@@ -303,9 +306,9 @@ export class Multivector {
     static translator(x: number, y: number, z: number): Multivector {
         const multivector = new Multivector()
         multivector.components[0] = 1
-        multivector.components[5] = x / 2
-        multivector.components[6] = y / 2
-        multivector.components[7] = z / 2
+        multivector.components[5] = -x / 2
+        multivector.components[6] = -y / 2
+        multivector.components[7] = -z / 2
         return multivector
     }
 
