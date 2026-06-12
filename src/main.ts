@@ -399,6 +399,9 @@ function handleEquation(text: string) {
                     const displayText = text.includes('=') ? text : `${lhs} = ${rhs}`
                     createObjectUI(lhs, displayText, mesh)
 
+                    const confirmDialog = document.getElementById('confirm-dialog')
+                    // if (confirmDialog) confirmDialog.style.display = 'block'
+
                     // Store operation for updates
                     mesh.userData.op = op
 
